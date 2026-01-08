@@ -17,6 +17,27 @@ def get_live_price(symbol):
         pass
     return None
 
+def compute_metrics(portfolio_values):
+    series = pd.Series(portfolio_values, dtype="float64").dropna()
+    
+    returns = series.pct_change().dropna()
+    
+    cumulative = series / series.iloc[0]
+    running_max = cumulative.cummax()
+    drawdown = (cumulative - running_max) / running_max
+    
+    sharpe = (
+        (returns.mean() * 252) /
+        (returns.std() * np.sqrt(252))
+        if returns.std() > 0 else 0
+    )
+    
+    return {
+        "Total Return": f"{(series.iloc[-1]/series.iloc[0]-1)*100:.2f}%",
+        "Volatility": f"{returns.std()*np.sqrt(252)*100:.2f}%",
+        "Sharpe Ratio": f"{sharpe:.2f}",
+        "Max Drawdown": f"{drawdown.min()*100:.2f}%"
+    }
 
 def load_data(symbol, period):
     data = yf.download(
@@ -82,5 +103,6 @@ def momentum_strategy(df, capital, short_window=20, long_window=50):
     results['Strategy_Return'] = results['Portfolio_Value'].pct_change()
     
     return results, float(portfolio_values[-1])
+
 
 
