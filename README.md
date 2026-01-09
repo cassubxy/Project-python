@@ -30,8 +30,10 @@ A **quantitative finance dashboard** in Python using Streamlit, supporting both 
 
 Implemented in `Dashboard.py` with two independent analysis modes, selectable via the sidebar:
 
+> Note: The Single Asset Analysis (Quant-A) branch was used for development, but it is **not merged** into main to avoid unnecessary conflicts, as the project is already completed in the main branch using Quant-B.  
+
 1. **Quant A – Single Asset Analysis**  
-2. **Quant B – Multi-Asset Portfolio Analysis**  
+2. **Quant B – Multi-Asset Portfolio Analysis**
 
 ---
 
