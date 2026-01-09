@@ -127,30 +127,36 @@ st.set_page_config(
     page_icon="📊",
     layout="wide"
 )
+st.markdown("""
+<meta http-equiv="refresh" content="60">
+""", unsafe_allow_html=True)
 
-REFRESH_INTERVAL = 300  # 5 minutes in seconds
+REFRESH_INTERVAL = 60  # 5 minutes
 
-# Initialize timer in session_state
 if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = time.time()
 
-# Auto-refresh info & control
-time_since_refresh = int(time.time() - st.session_state.last_refresh)
-next_refresh = REFRESH_INTERVAL - time_since_refresh
+current_time = time.time()
+time_since = int(current_time - st.session_state.last_refresh)
+next_refresh = max(0, REFRESH_INTERVAL - time_since)
 
-col_info1, col_info2, col_info3 = st.columns([2, 2, 1])
-with col_info1:
-    st.markdown(f"Last update: {datetime.fromtimestamp(st.session_state.last_refresh).strftime('%H:%M:%S')}")
+# Afficher l'info
+col1, col2, col3 = st.columns([2, 2, 1])
 
-with col_info3:
-    if st.button("Refresh now"):
-        st.session_state.last_refresh = time.time()
+with col1:
+    st.markdown(f"**Last update:** {datetime.fromtimestamp(st.session_state.last_refresh).strftime('%H:%M:%S')}")
+
+with col2:
+    progress = min(1.0, time_since / REFRESH_INTERVAL)
+    # st.progress(progress)
+    # st.caption(f"Auto-refresh in: {next_refresh}s")
+
+with col3:
+    if st.button(" Refresh Now"):
+        st.session_state.last_refresh = current_time
+        st.cache_data.clear()
         st.rerun()
 
-# Auto-refresh every 5 minutes
-if time.time() - st.session_state.last_refresh > REFRESH_INTERVAL:
-    st.session_state.last_refresh = time.time()
-    st.rerun()
 
 st.title("Quant A — Single Asset Analysis")
 st.markdown("**Comparative Analysis: Buy & Hold vs Momentum**")
@@ -295,6 +301,7 @@ Momentum strategy helps reduce drawdown at the cost of more active management.
 """)
 
 st.caption(f"Analysis performed on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
 
 
 
