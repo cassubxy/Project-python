@@ -202,29 +202,35 @@ st.sidebar.markdown("---")
 
 # QUANT A - SINGLE ASSET
 if analysis_mode == "Quant A - Single Asset":
-    REFRESH_INTERVAL = 300  # 5 minutes in seconds
+    st.markdown("""
+    <meta http-equiv="refresh" content="60">
+    """, unsafe_allow_html=True)
 
-    # Initialize timer in session_state
+    REFRESH_INTERVAL = 60  # 5 minutes
+
     if 'last_refresh' not in st.session_state:
         st.session_state.last_refresh = time.time()
 
-    # Auto-refresh info & control
-    time_since_refresh = int(time.time() - st.session_state.last_refresh)
-    next_refresh = REFRESH_INTERVAL - time_since_refresh
+    current_time = time.time()
+    time_since = int(current_time - st.session_state.last_refresh)
+    next_refresh = max(0, REFRESH_INTERVAL - time_since)
 
-    col_info1, col_info2, col_info3 = st.columns([2, 2, 1])
-    with col_info1:
-        st.markdown(f"Last update: {datetime.fromtimestamp(st.session_state.last_refresh).strftime('%H:%M:%S')}")
+    # Afficher l'info
+    col1, col2, col3 = st.columns([2, 2, 1])
 
-    with col_info3:
-        if st.button("Refresh now"):
-            st.session_state.last_refresh = time.time()
+    with col1:
+        st.markdown(f"**Last update:** {datetime.fromtimestamp(st.session_state.last_refresh).strftime('%H:%M:%S')}")
+
+    with col2:
+        progress = min(1.0, time_since / REFRESH_INTERVAL)
+    
+
+    with col3:
+        if st.button(" Refresh Now"):
+            st.session_state.last_refresh = current_time
+            st.cache_data.clear()
             st.rerun()
 
-    # Auto-refresh every 5 minutes
-    if time.time() - st.session_state.last_refresh > REFRESH_INTERVAL:
-        st.session_state.last_refresh = time.time()
-        st.rerun()
     st.title("Quant A — Single Asset Analysis")
     st.markdown("**Comparative Analysis: Buy & Hold vs Momentum**")
 
@@ -282,6 +288,8 @@ if analysis_mode == "Quant A - Single Asset":
     final_value_bh = bh_result["final_value"]
     portfolio_values_bh = bh_result["portfolio_values"]
     profit_pct_bh = bh_result["profit_pct"]
+    st.metric("Final Value", f"${final_value_bh:,.2f}")
+    st.write(f"Total transaction fees: ${bh_result['total_fees']:,.2f}")
 
     fig_bh = go.Figure()
     fig_bh.add_trace(go.Scatter(
@@ -305,66 +313,24 @@ if analysis_mode == "Quant A - Single Asset":
         st.error("Long MA must be greater than Short MA")
         st.stop()
 
-    mom_results, final_value_mom = momentum_strategy(data, initial_capital, short_window, long_window)
-
-    if mom_results.empty:
-        st.error("Not enough data for momentum strategy")
-        st.stop()
+    mom_results, final_value_mom, num_trades, total_fees_mom = momentum_strategy(
+        data, initial_capital, short_window, long_window
+    )
 
     profit_pct_mom = (final_value_mom - initial_capital) / initial_capital * 100
 
-    # Calculer les MA sur les données complètes pour l'affichage
-    data_with_ma = data.copy()
-    data_with_ma['MA_Short'] = data_with_ma['Close'].rolling(short_window).mean()
-    data_with_ma['MA_Long'] = data_with_ma['Close'].rolling(long_window).mean()
 
-    fig_mom = make_subplots(
-        rows=2, cols=1, shared_xaxes=True,
-        row_heights=[0.6, 0.4],
-        subplot_titles=("Price & Moving Averages", "Portfolio Value")
-    )
-
-    # Graphique 1 : Prix et MA
-    fig_mom.add_trace(go.Scatter(
-        x=data_with_ma.index, 
-        y=data_with_ma['Close'], 
-        name="Price",
-        line=dict(color="cyan")
-    ), row=1, col=1)
-
-    fig_mom.add_trace(go.Scatter(
-        x=data_with_ma.index, 
-        y=data_with_ma['MA_Short'], 
-        name=f"Short MA ({short_window})",
-        line=dict(color="orange")
-    ), row=1, col=1)
-
-    fig_mom.add_trace(go.Scatter(
-        x=data_with_ma.index, 
-        y=data_with_ma['MA_Long'], 
-        name=f"Long MA ({long_window})",
-        line=dict(color="red")
-    ), row=1, col=1)
-
-    # Graphique 2 : Portfolio Value
+    fig_mom = go.Figure()
     fig_mom.add_trace(go.Scatter(
         x=mom_results['Date'],
         y=mom_results['Portfolio_Value'],
         name="Momentum Portfolio",
         line=dict(color="purple")
-    ), row=2, col=1)
-
-    fig_mom.update_layout(
-        height=600,
-        showlegend=True,
-        hovermode='x unified'
-    )
-
-    fig_mom.update_yaxes(title_text="Price ($)", row=1, col=1)
-    fig_mom.update_yaxes(title_text="Portfolio Value ($)", row=2, col=1)
-    fig_mom.update_xaxes(title_text="Date", row=2, col=1)
-
+    ))
+    fig_mom.update_layout(height=350)
     st.plotly_chart(fig_mom, use_container_width=True)
+    st.write(f"Number of trades executed: {num_trades}")
+    st.write(f"Total transaction fees: ${total_fees_mom:,.2f}")
 
     st.subheader("Normalized Comparison")
     compare_df = pd.DataFrame({
@@ -386,15 +352,15 @@ if analysis_mode == "Quant A - Single Asset":
 
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("### Buy & Hold")
+        st.markdown("### Buy & Hold Metrics")
         st.metric("Final Value", f"${final_value_bh:,.0f}")
-        for k, v in metrics_bh.items():
+        for k,v in metrics_bh.items():
             st.write(f"*{k}:* {v}")
-
     with col2:
-        st.markdown("### Momentum")
+        st.markdown("### Momentum Metrics")
         st.metric("Final Value", f"${final_value_mom:,.0f}")
-        for k, v in metrics_mom.items():
+        st.write(f"Number of trades: {num_trades}")
+        for k,v in metrics_mom.items():
             st.write(f"*{k}:* {v}")
 
     st.subheader("Conclusion")
@@ -402,9 +368,9 @@ if analysis_mode == "Quant A - Single Asset":
     - Initial Capital: ${initial_capital:,.0f}
     - Buy & Hold: {profit_pct_bh:.2f}%
     - Momentum: {profit_pct_mom:.2f}%
+    - Number of trades (Momentum): {num_trades}
 
-    The Momentum strategy helps reduce drawdown
-    at the cost of more active management.
+    Momentum strategy helps reduce drawdown at the cost of more active management.
     """)
 
     st.caption(f"Analysis performed on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -414,6 +380,35 @@ if analysis_mode == "Quant A - Single Asset":
 # QUANT B - MULTI-ASSET
 
 elif analysis_mode == "Quant B - Multi-Asset Portfolio":
+    st.markdown("""
+    <meta http-equiv="refresh" content="60">
+    """, unsafe_allow_html=True)
+
+    REFRESH_INTERVAL = 60 #seconds
+
+    if 'last_refresh' not in st.session_state:
+        st.session_state.last_refresh = time.time()
+
+    current_time = time.time()
+    time_since = int(current_time - st.session_state.last_refresh)
+    next_refresh = max(0, REFRESH_INTERVAL - time_since)
+
+    
+    col1, col2, col3 = st.columns([2, 2, 1])
+
+    with col1:
+        st.markdown(f"**Last update:** {datetime.fromtimestamp(st.session_state.last_refresh).strftime('%H:%M:%S')}")
+
+    with col2:
+        progress = min(1.0, time_since / REFRESH_INTERVAL)
+    
+
+    with col3:
+        if st.button(" Refresh Now"):
+            st.session_state.last_refresh = current_time
+            st.cache_data.clear()
+            st.rerun()
+
     st.header("Quant B — Multi-Asset Portfolio")
     st.markdown("***Comparative Buy & Hold multi-asset analysis***")
     
@@ -622,5 +617,4 @@ elif analysis_mode == "Quant B - Multi-Asset Portfolio":
     """)
     
     st.caption(f"Analysis performed on {datetime.now().strftime('%Y-%m-%d at %H:%M:%S')}")
-
 
