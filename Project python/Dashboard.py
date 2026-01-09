@@ -148,8 +148,7 @@ with col1:
 
 with col2:
     progress = min(1.0, time_since / REFRESH_INTERVAL)
-    # st.progress(progress)
-    # st.caption(f"Auto-refresh in: {next_refresh}s")
+   
 
 with col3:
     if st.button(" Refresh Now"):
@@ -301,6 +300,7 @@ Momentum strategy helps reduce drawdown at the cost of more active management.
 """)
 
 st.caption(f"Analysis performed on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
 
 
 
