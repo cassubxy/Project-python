@@ -49,6 +49,8 @@ def load_data(symbol, period):
     )
     data = data[['Open', 'High', 'Low', 'Close', 'Volume']].dropna()
     return data
+#Transaction fees
+TRADE_FEE = 0.001  # 0.1 percent per trade
 
 def buy_and_hold(data, capital):
     data = data.copy()
@@ -56,14 +58,19 @@ def buy_and_hold(data, capital):
     data['Cumulative_Return'] = (1 + data['Return']).cumprod()
     
     buy_price = float(data['Close'].iloc[0])
-    shares = capital / buy_price
-    final_value = float(shares * data['Close'].iloc[-1])
+    shares = (capital * (1 - TRADE_FEE)) / buy_price
+    total_fees = capital * TRADE_FEE
+    final_value = shares * float(data['Close'].iloc[-1])
+
+    final_value *= (1 - TRADE_FEE)
+    total_fees += final_value / (1 - TRADE_FEE) * TRADE_FEE
     
     return {
         "portfolio_values": capital * data['Cumulative_Return'],
         "final_value": final_value,
         "profit": final_value - capital,
-        "profit_pct": float((final_value - capital) / capital * 100)
+        "profit_pct": float((final_value - capital) / capital * 100),
+        "total_fees": total_fees
     }
 
 
@@ -76,25 +83,36 @@ def momentum_strategy(df, capital, short_window=20, long_window=50):
     df['Signal'] = 0
     df.loc[df['MA_Short'] > df['MA_Long'], 'Signal'] = 1
     
-    cash = capital
+    cash = float(capital)
     shares = 0
     position = 0
     portfolio_values = []
+    num_trades = 0
+    total_fees = 0.0
 
     for i in range(1, len(df)):
         price = float(df['Close'].iloc[i])
         signal = df['Signal'].iloc[i-1]
 
         if signal == 1 and position == 0:
-            shares = cash / price
-            cash = 0
+            trade_amount = cash
+            fees = trade_amount * TRADE_FEE
+            total_fees += fees
+            shares = (cash * (1 - TRADE_FEE)) / price 
+            cash = 0.0
             position = 1
-        elif signal == 0 and position == 1:
-            cash = shares * price
-            shares = 0
-            position = 0
+            num_trades += 1
 
-        portfolio_values.append(shares * price if position == 1 else cash)
+        elif signal == 0 and position == 1:
+            trade_amount = shares * price
+            fees = trade_amount * TRADE_FEE
+            total_fees += fees
+            cash = shares * price * (1 - TRADE_FEE) 
+            shares = 0.0
+            position = 0
+            num_trades += 1
+
+        portfolio_values.append(cash + shares * price)
 
     results = pd.DataFrame({
         'Date': df.index[1:],
@@ -102,7 +120,7 @@ def momentum_strategy(df, capital, short_window=20, long_window=50):
     })
     results['Strategy_Return'] = results['Portfolio_Value'].pct_change()
     
-    return results, float(portfolio_values[-1])
+    return results, float(portfolio_values[-1]),num_trades,total_fees
 
 def load_multi_asset(symbols, period="1y"):
     all_data = pd.DataFrame()
@@ -604,3 +622,5 @@ elif analysis_mode == "Quant B - Multi-Asset Portfolio":
     """)
     
     st.caption(f"Analysis performed on {datetime.now().strftime('%Y-%m-%d at %H:%M:%S')}")
+
+
