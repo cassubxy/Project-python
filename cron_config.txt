@@ -1,0 +1,41 @@
+# Cron Job Configuration for Daily Market Report
+
+# SETUP INSTRUCTIONS:
+
+# 1. Make script executable:
+chmod +x run_daily_report.sh
+
+# 2. Edit crontab:
+crontab -e
+
+# 3. Add this line (replace /path/to/project):
+0 20 * * * /path/to/Project-python/Project\ python/run_daily_report.sh
+
+# 4. Save and verify:
+crontab -l
+
+# CRON SYNTAX:
+# 0 20 * * *
+# │ │  │ │ │
+# │ │  │ │ └─ Day of week (0-7, Sunday=0,7)
+# │ │  │ └─── Month (1-12)
+# │ │  └───── Day of month (1-31)
+# │ └─────── Hour (0-23)
+# └───────── Minute (0-59)
+
+# EXAMPLES:
+# 0 20 * * *     - Every day at 8pm
+# 0 8,20 * * *   - Twice daily (8am & 8pm)
+# 0 20 * * 1-5   - Weekdays only at 8pm
+
+# TESTING:
+# Manual test:
+bash run_daily_report.sh
+
+# View logs:
+tail -f logs/cron_$(date +%Y%m%d).log
+```
+
+**Note importante** : Fais attention au chemin ! Si ton dossier s'appelle "Project python" (avec espace), il faut l'échapper :
+```
+0 20 * * * /path/to/Project-python/Project\ python/run_daily_report.sh
