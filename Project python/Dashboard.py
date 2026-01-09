@@ -49,6 +49,8 @@ def load_data(symbol, period):
     )
     data = data[['Open', 'High', 'Low', 'Close', 'Volume']].dropna()
     return data
+#Transaction fees
+TRADE_FEE = 0.001  # 0.1 percent per trade
 
 def buy_and_hold(data, capital):
     data = data.copy()
@@ -56,14 +58,19 @@ def buy_and_hold(data, capital):
     data['Cumulative_Return'] = (1 + data['Return']).cumprod()
     
     buy_price = float(data['Close'].iloc[0])
-    shares = capital / buy_price
-    final_value = float(shares * data['Close'].iloc[-1])
+    shares = (capital * (1 - TRADE_FEE)) / buy_price
+    total_fees = capital * TRADE_FEE
+    final_value = shares * float(data['Close'].iloc[-1])
+
+    final_value *= (1 - TRADE_FEE)
+    total_fees += final_value / (1 - TRADE_FEE) * TRADE_FEE
     
     return {
         "portfolio_values": capital * data['Cumulative_Return'],
         "final_value": final_value,
         "profit": final_value - capital,
-        "profit_pct": float((final_value - capital) / capital * 100)
+        "profit_pct": float((final_value - capital) / capital * 100),
+        "total_fees": total_fees
     }
 
 
@@ -76,25 +83,36 @@ def momentum_strategy(df, capital, short_window=20, long_window=50):
     df['Signal'] = 0
     df.loc[df['MA_Short'] > df['MA_Long'], 'Signal'] = 1
     
-    cash = capital
+    cash = float(capital)
     shares = 0
     position = 0
     portfolio_values = []
+    num_trades = 0
+    total_fees = 0.0
 
     for i in range(1, len(df)):
         price = float(df['Close'].iloc[i])
         signal = df['Signal'].iloc[i-1]
 
         if signal == 1 and position == 0:
-            shares = cash / price
-            cash = 0
+            trade_amount = cash
+            fees = trade_amount * TRADE_FEE
+            total_fees += fees
+            shares = (cash * (1 - TRADE_FEE)) / price 
+            cash = 0.0
             position = 1
-        elif signal == 0 and position == 1:
-            cash = shares * price
-            shares = 0
-            position = 0
+            num_trades += 1
 
-        portfolio_values.append(shares * price if position == 1 else cash)
+        elif signal == 0 and position == 1:
+            trade_amount = shares * price
+            fees = trade_amount * TRADE_FEE
+            total_fees += fees
+            cash = shares * price * (1 - TRADE_FEE) 
+            shares = 0.0
+            position = 0
+            num_trades += 1
+
+        portfolio_values.append(cash + shares * price)
 
     results = pd.DataFrame({
         'Date': df.index[1:],
@@ -102,7 +120,7 @@ def momentum_strategy(df, capital, short_window=20, long_window=50):
     })
     results['Strategy_Return'] = results['Portfolio_Value'].pct_change()
     
-    return results, float(portfolio_values[-1])
+    return results, float(portfolio_values[-1]),num_trades,total_fees
 
 st.set_page_config(
     page_title="Quant A - Single Asset Analysis",
@@ -191,6 +209,8 @@ bh_result = buy_and_hold(data, initial_capital)
 final_value_bh = bh_result["final_value"]
 portfolio_values_bh = bh_result["portfolio_values"]
 profit_pct_bh = bh_result["profit_pct"]
+st.metric("Final Value", f"${final_value_bh:,.2f}")
+st.write(f"Total transaction fees: ${bh_result['total_fees']:,.2f}")
 
 fig_bh = go.Figure()
 fig_bh.add_trace(go.Scatter(
@@ -214,66 +234,24 @@ if long_window <= short_window:
     st.error("Long MA must be greater than Short MA")
     st.stop()
 
-mom_results, final_value_mom = momentum_strategy(data, initial_capital, short_window, long_window)
-
-if mom_results.empty:
-    st.error("Not enough data for momentum strategy")
-    st.stop()
+mom_results, final_value_mom, num_trades, total_fees_mom = momentum_strategy(
+    data, initial_capital, short_window, long_window
+)
 
 profit_pct_mom = (final_value_mom - initial_capital) / initial_capital * 100
 
-# Calculer les MA sur les données complètes pour l'affichage
-data_with_ma = data.copy()
-data_with_ma['MA_Short'] = data_with_ma['Close'].rolling(short_window).mean()
-data_with_ma['MA_Long'] = data_with_ma['Close'].rolling(long_window).mean()
 
-fig_mom = make_subplots(
-    rows=2, cols=1, shared_xaxes=True,
-    row_heights=[0.6, 0.4],
-    subplot_titles=("Price & Moving Averages", "Portfolio Value")
-)
-
-# Graphique 1 : Prix et MA
-fig_mom.add_trace(go.Scatter(
-    x=data_with_ma.index, 
-    y=data_with_ma['Close'], 
-    name="Price",
-    line=dict(color="cyan")
-), row=1, col=1)
-
-fig_mom.add_trace(go.Scatter(
-    x=data_with_ma.index, 
-    y=data_with_ma['MA_Short'], 
-    name=f"Short MA ({short_window})",
-    line=dict(color="orange")
-), row=1, col=1)
-
-fig_mom.add_trace(go.Scatter(
-    x=data_with_ma.index, 
-    y=data_with_ma['MA_Long'], 
-    name=f"Long MA ({long_window})",
-    line=dict(color="red")
-), row=1, col=1)
-
-# Graphique 2 : Portfolio Value
+fig_mom = go.Figure()
 fig_mom.add_trace(go.Scatter(
     x=mom_results['Date'],
     y=mom_results['Portfolio_Value'],
     name="Momentum Portfolio",
     line=dict(color="purple")
-), row=2, col=1)
-
-fig_mom.update_layout(
-    height=600,
-    showlegend=True,
-    hovermode='x unified'
-)
-
-fig_mom.update_yaxes(title_text="Price ($)", row=1, col=1)
-fig_mom.update_yaxes(title_text="Portfolio Value ($)", row=2, col=1)
-fig_mom.update_xaxes(title_text="Date", row=2, col=1)
-
+))
+fig_mom.update_layout(height=350)
 st.plotly_chart(fig_mom, use_container_width=True)
+st.write(f"Number of trades executed: {num_trades}")
+st.write(f"Total transaction fees: ${total_fees_mom:,.2f}")
 
 st.subheader("Normalized Comparison")
 compare_df = pd.DataFrame({
@@ -295,15 +273,15 @@ metrics_mom = compute_metrics(mom_results['Portfolio_Value'])
 
 col1, col2 = st.columns(2)
 with col1:
-    st.markdown("### Buy & Hold")
+    st.markdown("### Buy & Hold Metrics")
     st.metric("Final Value", f"${final_value_bh:,.0f}")
-    for k, v in metrics_bh.items():
+    for k,v in metrics_bh.items():
         st.write(f"*{k}:* {v}")
-
 with col2:
-    st.markdown("### Momentum")
+    st.markdown("### Momentum Metrics")
     st.metric("Final Value", f"${final_value_mom:,.0f}")
-    for k, v in metrics_mom.items():
+    st.write(f"Number of trades: {num_trades}")
+    for k,v in metrics_mom.items():
         st.write(f"*{k}:* {v}")
 
 st.subheader("Conclusion")
@@ -311,12 +289,13 @@ st.info(f"""
 - Initial Capital: ${initial_capital:,.0f}
 - Buy & Hold: {profit_pct_bh:.2f}%
 - Momentum: {profit_pct_mom:.2f}%
+- Number of trades (Momentum): {num_trades}
 
-The Momentum strategy helps reduce drawdown
-at the cost of more active management.
+Momentum strategy helps reduce drawdown at the cost of more active management.
 """)
 
 st.caption(f"Analysis performed on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
 
 
 
